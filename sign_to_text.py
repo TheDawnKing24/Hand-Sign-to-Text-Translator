@@ -1,18 +1,3 @@
-"""
-Sign-to-Text: rule-based hand gesture recognizer
--------------------------------------------------
-Webcam -> OpenCV -> MediaPipe HandLandmarker (Tasks API) -> rule-based classifier -> text overlay
-
-Controls while running:
-  SPACE      -> commit the currently detected word into the sentence buffer
-  BACKSPACE  -> remove last committed word
-  c          -> clear the sentence buffer
-  q          -> quit
-
-Run locally (needs a webcam):
-    python sign_to_text.py
-"""
-
 import os
 import time
 import urllib.request
@@ -23,21 +8,16 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision as mp_vision
 
 MODEL_PATH = "hand_landmarker.task"
-MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
-    "hand_landmarker/float16/1/hand_landmarker.task"
-)
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 
-# Standard 21 point hand skeleton connections (thumb, index, middle, ring,
-# pinky, and the palm base) used only for drawing, mirrors what
-# mp.solutions.hands.HAND_CONNECTIONS used to give us.
+# connections for drawing the skeleton on screen
 HAND_CONNECTIONS = [
-    (0, 1), (1, 2), (2, 3), (3, 4),          # thumb
-    (0, 5), (5, 6), (6, 7), (7, 8),          # index
-    (5, 9), (9, 10), (10, 11), (11, 12),     # middle
-    (9, 13), (13, 14), (14, 15), (15, 16),   # ring
-    (13, 17), (17, 18), (18, 19), (19, 20),  # pinky
-    (0, 17),                                  # palm base
+    (0, 1), (1, 2), (2, 3), (3, 4),
+    (0, 5), (5, 6), (6, 7), (7, 8),
+    (5, 9), (9, 10), (10, 11), (11, 12),
+    (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (17, 18), (18, 19), (19, 20),
+    (0, 17),
 ]
 
 FINGER_TIPS = {"thumb": 4, "index": 8, "middle": 12, "ring": 16, "pinky": 20}
@@ -46,22 +26,19 @@ FINGER_PIPS = {"thumb": 2, "index": 6, "middle": 10, "ring": 14, "pinky": 18}
 
 def ensure_model():
     if not os.path.exists(MODEL_PATH):
-        print("Downloading hand_landmarker.task model (~10 MB, one-time)...")
+        print("downloading model...")
         urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-        print("Done.")
+        print("done")
 
 
 def fingers_up(landmarks, handedness_label):
-    """
-    landmarks: list of 21 (x, y, z) normalized coordinates
-    handedness_label: "Left" or "Right"
-    """
     up = {}
     for name in ["index", "middle", "ring", "pinky"]:
         tip_y = landmarks[FINGER_TIPS[name]][1]
         pip_y = landmarks[FINGER_PIPS[name]][1]
         up[name] = tip_y < pip_y
 
+    # thumb is sideways so this needs x not y, and it flips depending on hand
     thumb_tip_x = landmarks[4][0]
     thumb_ip_x = landmarks[3][0]
     if handedness_label == "Right":
@@ -73,9 +50,7 @@ def fingers_up(landmarks, handedness_label):
 
 
 def classify_gesture(up):
-    thumb, index, middle, ring, pinky = (
-        up["thumb"], up["index"], up["middle"], up["ring"], up["pinky"]
-    )
+    thumb, index, middle, ring, pinky = up["thumb"], up["index"], up["middle"], up["ring"], up["pinky"]
 
     if thumb and not index and not middle and not ring and not pinky:
         return "YES"
@@ -114,8 +89,7 @@ def main():
 
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print("Could not open webcam. Check that a camera is connected "
-              "and not in use by another application.")
+        print("no webcam found")
         return
 
     sentence = []
@@ -132,7 +106,7 @@ def main():
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-        timestamp_ms = int(frame_index * (1000 / 30))  # assume ~30fps
+        timestamp_ms = int(frame_index * (1000 / 30))
         result = landmarker.detect_for_video(mp_image, timestamp_ms)
         frame_index += 1
 
@@ -155,21 +129,15 @@ def main():
         overlay_h = 110
         cv2.rectangle(frame, (0, 0), (w, overlay_h), (0, 0, 0), -1)
 
-        cv2.putText(
-            frame, f"Detected: {current_word}", (15, 35),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2
-        )
+        cv2.putText(frame, f"Detected: {current_word}", (15, 35),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
 
         sentence_text = " ".join(sentence)
-        cv2.putText(
-            frame, sentence_text[-60:], (15, 80),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2
-        )
+        cv2.putText(frame, sentence_text[-60:], (15, 80),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        cv2.putText(
-            frame, "[SPACE]=add  [BACKSPACE]=undo  [c]=clear  [q]=quit",
-            (15, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1
-        )
+        cv2.putText(frame, "[SPACE]=add  [BACKSPACE]=undo  [c]=clear  [q]=quit",
+                    (15, h - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
 
         cv2.imshow("Sign to Text", frame)
 
